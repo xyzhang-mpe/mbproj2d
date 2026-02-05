@@ -29,11 +29,12 @@ class PocoMCSampler:
         if sampler_config is None:
             sampler_config = {}
 
+        self._loglike_creation()  # a dirty way to create a global picklable function pocomc_loglike 
+
         prior = self._prior_creation(self.fit.pars.copy())
-        loglike = self._loglike_creation()
 
         self.sampler = pocomc.Sampler(prior=prior,
-                                      likelihood=loglike,
+                                      likelihood=pocomc_loglike,
                                       **sampler_config
                                       )
 
@@ -44,8 +45,8 @@ class PocoMCSampler:
         pars: Pars
 
         prior_rv_list = []
-        for par in pars.freeKeys():
-            par: Par
+        for par_name in pars.freeKeys():
+            par: Par = pars[par_name]
             prior_rv_list += [self.create_rv_from_mbprior(par.prior)]
 
         pocomc_prior = pocomc.Prior(prior_rv_list)
@@ -53,11 +54,16 @@ class PocoMCSampler:
         return pocomc_prior
 
     def _loglike_creation(self):
+    
+        pars = self.fit.pars.copy()
 
-        def loglike(vals):
-            return N.sum(Likelihood(self.fit.images, self.fit.model, vals).images)
+        global pocomc_loglike
 
-        return loglike
+        def pocomc_loglike(vals):
+            pars.setFree(vals)
+            like = Likelihood(self.fit.images, self.fit.model, pars)
+            return N.sum(like.images)
+
 
     def run(self, output_file, run_config=None):
         """
@@ -81,7 +87,7 @@ class PocoMCSampler:
         # the resampled_points will be reshpaed to a [Nstep, 1, Npara] array
         #
         with h5py.File(output_file, "w") as f:
-            f["chain"] = N.reshape(resampled_points, [resampled_points.shape[0], 1, resampled_points[1]])
+            f["chain"] = N.reshape(resampled_points, [resampled_points.shape[0], 1, resampled_points.shape[1]])
             f["likelihood"] = N.reshape(log_like, [log_like.size, 1])
             f["thawed_params"] = N.array([x.encode('utf-8') for x in self.fit.pars.freeKeys()])
 
