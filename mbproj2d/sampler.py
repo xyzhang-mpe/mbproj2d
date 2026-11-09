@@ -1,4 +1,5 @@
 import warnings
+import copy
 
 import numpy as N
 from scipy import stats
@@ -55,14 +56,16 @@ class PocoMCSampler:
 
     def _loglike_creation(self):
     
-        pars = self.fit.pars.copy()
+        # pars = self.fit.pars.copy()
 
         global pocomc_loglike
 
         def pocomc_loglike(vals):
-            pars.setFree(vals)
-            like = Likelihood(self.fit.images, self.fit.model, pars)
-            return N.sum(like.images)
+            fit = copy.deepcopy(self.fit)
+            fit.pars.setFree(vals)
+            loglike = N.sum(fit.like().images)
+
+            return loglike
 
 
     def run(self, output_file, run_config=None):
