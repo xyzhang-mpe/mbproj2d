@@ -17,6 +17,7 @@
 import math
 import numpy as N
 from scipy.special import hyp2f1
+from scipy.integrate import quad
 import scipy.interpolate
 
 from .physconstants import kpc_cm
@@ -122,21 +123,21 @@ class ProfileBinned(ProfileBase):
         self.rbin_edges_kpc = rbin_edges_kpc
         self.log = log
 
-    def compute(self, radii):
+    def compute(self, pars, radii):
         pvals = N.array([
             pars['%s_%03i' % (self.name, i)].v
             for i in range(radii.num)
         ])
         if self.log:
-            pvals = N.exp(vals)
+            pvals = N.exp(pvals)
         idx = N.searchsorted(self.rbin_edges_kpc[1:], radii.cent_kpc)
         idx = N.clip(idx, 0, len(pvals) - 1)
 
         # lookup bin for value
         outvals = pvals[idx]
         # mark values outside range as nan
-        outvals[radii.outer_kpc < rbin_edges_kpc[0]] = N.nan
-        outvals[radii.inner_kpc > rbin_edges_kpc[-1]] = N.nan
+        outvals[radii.outer_kpc < self.rbin_edges_kpc[0]] = N.nan
+        outvals[radii.inner_kpc > self.rbin_edges_kpc[-1]] = N.nan
 
         return outvals
 
@@ -373,6 +374,87 @@ class ProfileVikhDensity(ProfileBase):
             beta_2 = pars['%s_beta_2' % self.name].v
 
             retn_sqd += n0_2 ** 2 / (1 + r ** 2 / rc_2 ** 2) ** (3 * beta_2)
+
+        ne = N.sqrt(retn_sqd)
+        return ne
+
+
+class ProfileVikhDensityTaperedCore(ProfileBase):
+    """Core tapering for Vikhlinin+06 profile using tanh function
+
+    The new parameter logn0_1_max controls the highest allowed density.
+    Emission measures in the innermost 4 radial bins are properly calculated.
+    """
+    def __init__(self, name, pars, mode='double'):
+        ProfileBase.__init__(self, name, pars)
+        self.mode = mode
+
+        pars['%s_logn0_1' % name] = Par(math.log(1e-3), minval=-14., maxval=5., soft=True)
+        pars['%s_beta_1' % name] = Par(2 / 3., prior=PriorBoundedGaussian(2 / 3, 0.3, minval=0.2))
+        pars['%s_logrc_1' % name] = Par(math.log(300), prior=PriorGaussian(math.log(100), 1))
+        pars['%s_alpha' % name] = Par(0.1, prior=PriorGaussian(0, 1))
+        pars['%s_logn0_1_max' % name] = Par(math.log(1), minval=-5, maxval=5., soft=True, frozen=True)
+
+        if mode in {'single', 'double'}:
+            # pars['%s_epsilon' % name] = Par(3., minval=0., maxval=5.)
+            pars['%s_epsilon' % name] = Par(0., prior=PriorGaussian(0, 1))
+            pars['%s_gamma' % name] = Par(3., minval=0., maxval=10, frozen=True, soft=True)
+            pars['%s_logr_s' % name] = Par(math.log(500), prior=PriorGaussian(math.log(500), 0.5))
+
+        if mode == 'double':
+            pars['%s_logn0_2' % name] = Par(math.log(0.1), minval=-14., maxval=5., soft=True)
+            pars['%s_beta_2' % name] = Par(0.5, minval=0., maxval=4., soft=True)
+            pars['%s_logrc_2' % name] = Par(math.log(50), minval=-2, maxval=8.5, soft=True)
+
+    def compute(self, pars, radii):
+        n0_1 = math.exp(pars['%s_logn0_1' % self.name].v)
+        beta_1 = pars['%s_beta_1' % self.name].v
+        rc_1 = math.exp(pars['%s_logrc_1' % self.name].v)
+        alpha = pars['%s_alpha' % self.name].v
+        max_n_sqd = math.exp(pars['%s_logn0_1_max' % self.name].v) ** 2
+
+        r = radii.cent_kpc
+        rin = radii.inner_kpc
+        rout = radii.outer_kpc
+
+        func1 = lambda x: (
+                n0_1 ** 2 *
+                (x / rc_1) ** (-alpha) / (
+                        (1 + x ** 2 / rc_1 ** 2) ** (3 * beta_1 - 0.5 * alpha))
+        )
+
+        if self.mode in ('single', 'double'):
+            r_s = math.exp(pars['%s_logr_s' % self.name].v)
+            epsilon = pars['%s_epsilon' % self.name].v
+            gamma = pars['%s_gamma' % self.name].v
+            func2 = lambda x: (1 + (x / r_s) ** gamma) ** (epsilon / gamma)
+
+            func = lambda x: func1(x) / func2(x)
+        else:
+            func = func1
+
+        if self.mode == 'double':
+            n0_2 = math.exp(pars['%s_logn0_2' % self.name].v)
+            rc_2 = math.exp(pars['%s_logrc_2' % self.name].v)
+            beta_2 = pars['%s_beta_2' % self.name].v
+            func3 = lambda x: n0_2 ** 2 / (1 + x ** 2 / rc_2 ** 2) ** (3 * beta_2)
+
+            func_final = lambda x: func(x) + func3(x)
+        else:
+            func_final = func
+
+        func_tapered = lambda x: max_n_sqd * N.tanh(func_final(x) / max_n_sqd)
+
+        func_taperred_x2 = lambda x: func_tapered(x) * x ** 2
+        vol_x2 = lambda x: x ** 2
+
+        retn_sqd = func_tapered(r)
+        n_recalc = min(4, len(r))
+        for i, (_in, _out) in enumerate(zip(rin[:n_recalc], rout[:n_recalc])):
+            if N.isclose(_in, 0):
+                _in = _out * 0.1
+
+            retn_sqd[i] = quad(func_taperred_x2, _in, _out)[0] / quad(vol_x2, _in, _out)[0]
 
         ne = N.sqrt(retn_sqd)
         return ne

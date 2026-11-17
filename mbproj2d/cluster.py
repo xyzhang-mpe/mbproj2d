@@ -98,7 +98,7 @@ class ClusterBase(SrcModelBase):
             Z_arr[pixsize] = Zprof
 
         # add profiles to each image
-        for img, imgarr in zip(self.images, imgarrs):
+        for idx_im, (img, imgarr) in enumerate(zip(self.images, imgarrs)):
             pixsize_as = img.pixsize_as
 
             # calculate emissivity profile (per kpc3)
@@ -113,9 +113,40 @@ class ClusterBase(SrcModelBase):
             pix_cy = cy_as * img.invpixsize + img.origin[0]
             pix_cx = cx_as * img.invpixsize + img.origin[1]
 
+            pix_cy_nearest_center = int(N.floor(pix_cy))
+            pix_cx_nearest_center = int(N.floor(pix_cx))
+
+            pix_cy_shift = pix_cy - pix_cy_nearest_center
+            pix_cx_shift = pix_cx - pix_cx_nearest_center
+
             # add SB profile to image
+            empty_im = utils.zeros_aligned(img.shape, dtype=N.float32)  # empty img
+
             addSBToImg_Comb(
-                1, sb_arr, pix_cx, pix_cy, e, slosh, theta, mulm, mulmag, imgarr)
+                1, sb_arr, pix_cx_nearest_center, pix_cy_nearest_center, e, slosh, theta, mulm, mulmag, empty_im)
+
+            # Warning, the repainting doesn't take sloshing, ellipticity into account!
+            repaint_pix_ymin = max(pix_cy_nearest_center - 2, 0)
+            repaint_pix_ymax = min(pix_cy_nearest_center + 2, img.orig_shape[0] - 1)
+            repaint_pix_xmin = max(pix_cx_nearest_center - 2, 0)
+            repaint_pix_xmax = min(pix_cx_nearest_center + 2, img.orig_shape[1] - 1)
+
+            repaint_mesh_y, repaint_mesh_x = N.mgrid[repaint_pix_ymin: repaint_pix_ymax + 1,
+                                             repaint_pix_xmin: repaint_pix_xmax + 1]
+
+            if sb_arr.size >= 6:
+                sb_prof_for_paint = sb_arr[:6]
+            else:
+                sb_prof_for_paint = N.zeros(6, dtype=float)
+                sb_prof_for_paint[:sb_arr.size] = sb_arr
+
+            repaint_arr = utils.paint_central_25pix(sb_prof_for_paint,
+                                                    (repaint_mesh_x - pix_cx_nearest_center).flatten(),
+                                                    (repaint_mesh_y - pix_cy_nearest_center).flatten())
+            repaint_arr = repaint_arr.reshape(repaint_mesh_y.shape)
+            empty_im[repaint_pix_ymin:repaint_pix_ymax + 1, repaint_pix_xmin: repaint_pix_xmax + 1] = repaint_arr
+
+            imgarrs[idx_im] += utils.image_shift(empty_im, pix_cx_shift, pix_cy_shift).astype(N.float32)
 
     def computeProfiles(self, pars, radii):
         """Compute plasma profiles for use in physical profile computation

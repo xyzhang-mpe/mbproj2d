@@ -30,26 +30,32 @@ from scipy.special import gammaln
 
 import pyfftw
 from pyfftw import zeros_aligned, ones_aligned, empty_aligned
+
 pyfftw.interfaces.cache.enable()
 
 from .physconstants import kpc_cm, ne_nH, Mpc_cm, kpc3_cm3
+
 
 def uprint(*args, file=sys.stdout):
     """Unbuffered print."""
     print(*args, file=file)
     file.flush()
 
+
 def diffQuart(a, b):
     """Calculate a**4-b**4."""
-    return (a**2+b**2)*(a+b)*(a-b)
+    return (a ** 2 + b ** 2) * (a + b) * (a - b)
+
 
 def diffCube(a, b):
     """Calculate a**3-b**3."""
-    return (a-b)*(a*a+a*b+b*b)
+    return (a - b) * (a * a + a * b + b * b)
+
 
 def diffSqr(a, b):
     """Calculate a**2-b**2."""
-    return (a+b)*(a-b)
+    return (a + b) * (a - b)
+
 
 def projectionVolume(R1, R2, y1, y2):
     """Return the projected volume of a shell of radius R1->R2 onto an
@@ -66,12 +72,13 @@ def projectionVolume(R1, R2, y1, y2):
     def truncSqrt(x):
         return N.sqrt(N.clip(x, 0., 1e200))
 
-    p1 = truncSqrt(R1**2 - y2**2)
-    p2 = truncSqrt(R1**2 - y1**2)
-    p3 = truncSqrt(R2**2 - y2**2)
-    p4 = truncSqrt(R2**2 - y1**2)
+    p1 = truncSqrt(R1 ** 2 - y2 ** 2)
+    p2 = truncSqrt(R1 ** 2 - y1 ** 2)
+    p3 = truncSqrt(R2 ** 2 - y2 ** 2)
+    p4 = truncSqrt(R2 ** 2 - y1 ** 2)
 
-    return (2/3*math.pi) * ((p1**3 - p2**3) + (p4**3 - p3**3))
+    return (2 / 3 * math.pi) * ((p1 ** 3 - p2 ** 3) + (p4 ** 3 - p3 ** 3))
+
 
 def projectionVolumeMatrix(radii):
     """Calculate volumes (front and back) using a matrix calculation.
@@ -88,57 +95,63 @@ def projectionVolumeMatrix(radii):
 
     """
 
-    i_s, j_s = N.indices((len(radii)-1, len(radii)-1))
+    i_s, j_s = N.indices((len(radii) - 1, len(radii) - 1))
 
-    radii_2 = radii**2
+    radii_2 = radii ** 2
     y1_2 = radii_2[i_s]
-    y2_2 = radii_2[i_s+1]
+    y2_2 = radii_2[i_s + 1]
     R1_2 = radii_2[j_s]
-    R2_2 = radii_2[j_s+1]
+    R2_2 = radii_2[j_s + 1]
 
-    p1 = (R1_2-y2_2).clip(0)
-    p2 = (R1_2-y1_2).clip(0)
-    p3 = (R2_2-y2_2).clip(0)
-    p4 = (R2_2-y1_2).clip(0)
+    p1 = (R1_2 - y2_2).clip(0)
+    p2 = (R1_2 - y1_2).clip(0)
+    p3 = (R2_2 - y2_2).clip(0)
+    p4 = (R2_2 - y1_2).clip(0)
 
-    return (4/3*math.pi) * ((p1**1.5 - p2**1.5) + (p4**1.5 - p3**1.5))
+    return (4 / 3 * math.pi) * ((p1 ** 1.5 - p2 ** 1.5) + (p4 ** 1.5 - p3 ** 1.5))
+
 
 def calcNeSqdToNormPerKpc3(cosmo):
     """Compute factor to convert a ne-squared to a norm per kpc3."""
     return (
-        1e-14 / (4*math.pi*(cosmo.D_A*Mpc_cm * (1.+cosmo.z))**2) /
-        ne_nH * kpc3_cm3
+            1e-14 / (4 * math.pi * (cosmo.D_A * Mpc_cm * (1. + cosmo.z)) ** 2) /
+            ne_nH * kpc3_cm3
     )
+
 
 def symmetriseErrors(data):
     """Take numpy-format data,+,- and convert to data,+-."""
-    symerr = N.sqrt( 0.5*(data[:,1]**2 + data[:,2]**2) )
-    datacpy = N.array(data[:,0:2])
-    datacpy[:,1] = symerr
+    symerr = N.sqrt(0.5 * (data[:, 1] ** 2 + data[:, 2] ** 2))
+    datacpy = N.array(data[:, 0:2])
+    datacpy[:, 1] = symerr
     return datacpy
+
 
 def calcMedianErrors(results):
     """Take a set of repeated results, and calculate the median and errors (from perecentiles)."""
     r = N.array(results)
     r.sort(0)
     num = r.shape[0]
-    medians = r[ int(num*0.5) ]
-    lowpcs = r[ int(num*0.1585) ]
-    uppcs = r[ int(num*0.8415) ]
+    medians = r[int(num * 0.5)]
+    lowpcs = r[int(num * 0.1585)]
+    uppcs = r[int(num * 0.8415)]
 
-    return medians, uppcs-medians, lowpcs-medians
+    return medians, uppcs - medians, lowpcs - medians
+
 
 def calcChi2(model, data, error):
     """Calculate chi2 between model and data."""
-    return (((data-model)/error)**2).sum()
+    return (((data - model) / error) ** 2).sum()
+
 
 def cashLogLikelihood(data, model):
     """Calculate log likelihood of Cash statistic."""
 
-    like = N.sum(data * N.log(model)) - N.sum(model) - N.sum(gammaln(data+1))
+    like = N.sum(data * N.log(model)) - N.sum(model) - N.sum(gammaln(data + 1))
     if N.isfinite(like):
         return like
     return -N.inf
+
 
 class WithLock:
     """Hacky lockfile class."""
@@ -157,6 +170,7 @@ class WithLock:
     def __exit__(self, type, value, traceback):
         os.rmdir(self.filename)
 
+
 class AtomicWriteFile(object):
     """Write to a file, renaming to final name when finished."""
 
@@ -172,16 +186,20 @@ class AtomicWriteFile(object):
         self.f.close()
         os.rename(self.tempfilename, self.filename)
 
+
 def gehrels(c):
     return 1. + N.sqrt(c + 0.75)
+
 
 def run_rfft2(x):
     """Call numpy or pyfftw for rfft2."""
     return pyfftw.interfaces.numpy_fft.rfft2(x)
 
+
 def run_irfft2(x):
     """Call numpy or pyfftw for irfft2."""
     return pyfftw.interfaces.numpy_fft.irfft2(x)
+
 
 def loadChainFromFile(chainfname, pars, burn=0, thin=10, randsamples=None):
     """Get list of parameter values from chain.
@@ -213,6 +231,7 @@ def loadChainFromFile(chainfname, pars, burn=0, thin=10, randsamples=None):
 
     return chain
 
+
 def binImage(img, factor, mean=False):
     """Bin up image by factor.
 
@@ -223,8 +242,8 @@ def binImage(img, factor, mean=False):
 
     oyw, oxw = img.shape
 
-    nyw = oyw//factor if oyw%factor==0 else oyw//factor+1
-    nxw = oxw//factor if oxw%factor==0 else oxw//factor+1
+    nyw = oyw // factor if oyw % factor == 0 else oyw // factor + 1
+    nxw = oxw // factor if oxw % factor == 0 else oxw // factor + 1
 
     nimg = N.zeros((nyw, nxw), dtype=img.dtype)
 
@@ -238,6 +257,7 @@ def binImage(img, factor, mean=False):
         nimg = nimg / cts
 
     return nimg
+
 
 class ConvPSFHelper:
     """Helper class for doing convolution of image with PSF.
@@ -256,20 +276,20 @@ class ConvPSFHelper:
         self.in_realimg = pyfftw.zeros_aligned(imgshape, dtype=N.float32)
         self.in_realpsf = pyfftw.zeros_aligned(imgshape, dtype=N.float32)
         # output real->complex
-        cshape = (imgshape[0], imgshape[1]//2+1)
+        cshape = (imgshape[0], imgshape[1] // 2 + 1)
         self.temp_cmplx = pyfftw.zeros_aligned(cshape, dtype=N.complex64)
         self.temp_cmplxpsf = pyfftw.zeros_aligned(cshape, dtype=N.complex64)
         self.out_real = pyfftw.zeros_aligned(imgshape, dtype=N.float32)
 
         self.fwd_fftimg = pyfftw.FFTW(
             self.in_realimg, self.temp_cmplx,
-            axes=(0,1),
+            axes=(0, 1),
             direction='FFTW_FORWARD',
             flags=['FFTW_MEASURE'],
         )
         self.bkd_fftout = pyfftw.FFTW(
             self.temp_cmplx, self.out_real,
-            axes=(0,1),
+            axes=(0, 1),
             direction='FFTW_BACKWARD',
             flags=['FFTW_MEASURE'],
         )
@@ -277,11 +297,11 @@ class ConvPSFHelper:
         # compute fft of psf (only used once)
         self.fwd_fftpsf = pyfftw.FFTW(
             self.in_realpsf, self.temp_cmplxpsf,
-            axes=(0,1),
+            axes=(0, 1),
             direction='FFTW_FORWARD',
             flags=['FFTW_ESTIMATE'],
         )
-        self.in_realpsf[:,:] = psf
+        self.in_realpsf[:, :] = psf
         self.fwd_fftpsf()
 
     def doConv(self, inimg, outimg):
@@ -311,6 +331,7 @@ class ConvPSFHelper:
         """
         self.updatePSF(state['psf'])
 
+
 class CacheOnKey:
     """Cacheing class which writes to a pickled file in a subdirectory.
 
@@ -329,9 +350,9 @@ class CacheOnKey:
         self.keyhash = h.hexdigest()
         self.subdir = os.path.join(self.cachedir, self.keyhash[:2])
         self.resultsfile = os.path.join(
-            self.subdir, self.keyhash+'.pickle')
+            self.subdir, self.keyhash + '.pickle')
         self.lockfile = os.path.join(
-            self.subdir, self.keyhash+'.lock')
+            self.subdir, self.keyhash + '.lock')
 
     def __enter__(self):
         # make the output directory and subdirectory if required
@@ -375,3 +396,73 @@ class CacheOnKey:
                 fout,
                 protocol=pickle.HIGHEST_PROTOCOL
             )
+
+
+def paint_central_25pix(prof_arr, pix_coord_x, pix_coord_y):
+    """Paint central pixels using a surface brightness profile.
+
+       Profile radial bin width = image pixel size"""
+    assert len(prof_arr) == 6
+    add_mat = N.array([[1., 0., 0., 0., 0., 0.],
+                       [0.45661345, 0.54338655, 0., 0., 0., 0.],
+                       [0.07878764, 0.90618575, 0.01502819, 0., 0., 0.],
+                       [0., 0.47896862, 0.52103137, 0., 0., 0.],
+                       [0., 0.21382642, 0.78617393, 0., 0., 0.],
+                       [0., 0., 0.6931985, 0.30680171, 0., 0.],
+                       [0., 0., 0.48605322, 0.51394679, 0., 0.],
+                       [0., 0., 0.31172365, 0.68827656, 0., 0.],
+                       [0., 0., 0.00794145, 0.89221132, 0.09984633, 0.],
+                       [0., 0., 0., 0.20801662, 0.79198329, 0.]])
+
+    pix_coord_x = N.abs(pix_coord_x)
+    pix_coord_y = N.abs(pix_coord_y)
+    coord_large = N.max([pix_coord_x, pix_coord_y], axis=0)
+    coord_small = N.min([pix_coord_x, pix_coord_y], axis=0)
+    pix_idx = ((coord_large ** 2 + coord_large) / 2 + coord_small).astype(int)
+    pix_val = add_mat.dot(prof_arr)[pix_idx]
+    return pix_val
+
+
+def image_shift(input_arr, dx, dy):
+    """Shift an image within subgrid distance
+
+    :param input_arr: array to be shifted
+    :param dx: If positive, shift to the direction of large coordinate (i.e. right side), vice versa.
+    :param dy: If positive, shift to the direction of large coordinate, vice versa.
+    """
+
+    assert -0.5 <= dx <= 0.5
+    assert -0.5 <= dy <= 0.5
+
+    dxabs = N.abs(dx)
+    dyabs = N.abs(dy)
+
+    frac1 = dxabs * dyabs  # corner shifted to the diagnal
+    frac2 = (1 - dxabs) * dyabs  # side shifted to up or down
+    frac3 = dxabs * (1 - dyabs)  # side shifted to left or right
+    frac4 = (1 - dxabs) * (1 - dyabs)  # remaining part
+
+    out_arr = N.zeros_like(input_arr)
+
+    if dx >= 0 and dy >= 0:
+        out_arr += frac4 * input_arr
+        out_arr[1:, 1:] += frac1 * input_arr[:-1, :-1]
+        out_arr[1:, :] += frac2 * input_arr[:-1, :]
+        out_arr[:, 1:] += frac3 * input_arr[:, :-1]
+    if dx >= 0 and dy < 0:
+        out_arr += frac4 * input_arr
+        out_arr[:-1, 1:] += frac1 * input_arr[1:, :-1]
+        out_arr[:-1, :] += frac2 * input_arr[1:, :]
+        out_arr[:, 1:] += frac3 * input_arr[:, :-1]
+    if dx < 0 and dy >= 0:
+        out_arr += frac4 * input_arr
+        out_arr[1:, :-1] += frac1 * input_arr[:-1, 1:]
+        out_arr[1:, :] += frac2 * input_arr[:-1, :]
+        out_arr[:, :-1] += frac3 * input_arr[:, 1:]
+    if dx < 0 and dy < 0:
+        out_arr += frac4 * input_arr
+        out_arr[:-1, :-1] += frac1 * input_arr[1:, 1:]
+        out_arr[:-1, :] += frac2 * input_arr[1:, :]
+        out_arr[:, :-1] += frac3 * input_arr[:, 1:]
+
+    return out_arr
