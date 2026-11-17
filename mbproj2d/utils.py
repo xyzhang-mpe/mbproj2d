@@ -431,8 +431,8 @@ def image_shift(input_arr, dx, dy):
     :param dy: If positive, shift to the direction of large coordinate, vice versa.
     """
 
-    assert -0.5 <= dx <= 0.5
-    assert -0.5 <= dy <= 0.5
+    assert -0.5 <= dx <= 1.0
+    assert -0.5 <= dy <= 1.0
 
     dxabs = N.abs(dx)
     dyabs = N.abs(dy)
