@@ -175,7 +175,7 @@ class Phys:
         so result is independent of binning."""
         return vals*self.fracin + N.concatenate(([0], N.cumsum(vals)[:-1]))
 
-    def calc(self, ne_pcm3, T_keV, Z_solar, g_cmps2, phi_ergpg):
+    def calc(self, ne_pcm3, nesqd_pcm6, T_keV, Z_solar, g_cmps2, phi_ergpg):
         """Given input profiles, calculate output profiles.
 
         These are assumed to have the output radii spacing
@@ -197,7 +197,8 @@ class Phys:
         Mgas_g = ne_pcm3 * self.out_vol_cm3 * mu_e*mu_g
         v['Mgas_Msun'] = Mgas_g * (1/solar_mass_g)
 
-        norm_pkpc3 = self.nesqd_to_norm * ne_pcm3**2
+        # norm_pkpc3 = self.nesqd_to_norm * ne_pcm3**2
+        norm_pkpc3 = self.nesqd_to_norm * nesqd_pcm6
 
         # get fluxes in bands
         for band, calc in zip(self.fluxranges, self.fluxcalcs):
@@ -334,8 +335,11 @@ class Phys:
         g_resamp = self.rebinfn(g_arr)
         phi_resamp = self.rebinfn(phi_arr)
 
+        nesqd_arr = ne_arr ** 2
+        nesqd_resamp = self.rebinfn(nesqd_arr)
+
         # compute quantities given profiles
-        return self.calc(ne_resamp, T_resamp, Z_resamp, g_resamp, phi_resamp)
+        return self.calc(ne_resamp, nesqd_resamp, T_resamp, Z_resamp, g_resamp, phi_resamp)
 
     def computePhysChains(self, chain):
         """Compute set of chains for each physical quantity.
