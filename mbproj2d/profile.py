@@ -25,7 +25,16 @@ from .par import Par, PriorGaussian, PriorBoundedGaussian
 from . import utils
 
 
-class Radii:
+class RadiiBase:
+    def __init__(self):
+        self.proj_matrix = None
+
+    def project(self, emissivity_pkpc3):
+        """Project from emissivity profile to surface brightness (per kpc2)."""
+        return self.proj_matrix.dot(emissivity_pkpc3).astype(N.float32)
+
+
+class Radii(RadiiBase):
     """Define an equally-spaced set of shells/annuli and project between the two.
     :param rshell_kpc: width of shells/annuli in kpc
     :param num: number of shells/annuli
@@ -33,6 +42,7 @@ class Radii:
     """
 
     def __init__(self, rshell_kpc, num):
+        super().__init__()
         self.num = num
         self.rshell_kpc = rshell_kpc
 
@@ -59,6 +69,33 @@ class Radii:
     def project(self, emissivity_pkpc3):
         """Project from emissivity profile to surface brightness (per kpc2)."""
         return self.proj_matrix.dot(emissivity_pkpc3).astype(N.float32)
+
+
+class FlexibleRadii(RadiiBase):
+    """Radii with flexible shell widths. """
+
+    def __init__(self, rshell_edge):
+        super().__init__()
+        assert len(rshell_edge) > 2
+
+        self.edges_kpc = N.asarray(rshell_edge)
+        self.num = len(rshell_edge) - 1
+        self.rshell_kpc = N.diff(rshell_edge)
+
+        self.inner_kpc = rin = self.edges_kpc[:-1]
+        self.inner_cm = rin * kpc_cm
+        self.outer_kpc = rout = self.edges_kpc[1:]
+        self.outer_cm = rout * kpc_cm
+        self.cent_kpc = 0.5 * (rout + rin)
+        self.cent_cm = self.cent_kpc * kpc_cm
+        self.cent_logkpc = N.log(self.cent_kpc)
+        # if shells are constant density, this is the mass-averaged radius
+        self.massav_kpc = 0.75 * utils.diffQuart(rout, rin) / utils.diffCube(rout, rin)
+        self.area_kpc2 = math.pi * utils.diffSqr(rout, rin)
+        self.vol_kpc3 = (4 / 3 * math.pi) * utils.diffCube(rout, rin)
+
+        self.proj_matrix = (
+                utils.projectionVolumeMatrix(self.edges_kpc) / self.area_kpc2[:, N.newaxis])
 
 
 class ProfileBase:
@@ -385,6 +422,7 @@ class ProfileVikhDensityTaperedCore(ProfileBase):
     The new parameter logn0_1_max controls the highest allowed density.
     Emission measures in the innermost 4 radial bins are properly calculated.
     """
+
     def __init__(self, name, pars, mode='double'):
         ProfileBase.__init__(self, name, pars)
         self.mode = mode
