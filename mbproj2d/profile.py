@@ -487,11 +487,13 @@ class ProfileVikhDensityTaperedCore(ProfileBase):
         vol_x2 = lambda x: x ** 2
 
         retn_sqd = func_tapered(r)
-        n_recalc = min(4, len(r))
-        for i, (_in, _out) in enumerate(zip(rin[:n_recalc], rout[:n_recalc])):
-            if N.isclose(_in, 0):
-                _in = _out * 0.1
 
+        # recalc bins with small in/out radii ratios
+        indices_recalc = N.argwhere(rin / rout < 0.9).squeeze()
+
+        for i in indices_recalc:
+            _in = rin[i]
+            _out = rout[i]
             retn_sqd[i] = quad(func_taperred_x2, _in, _out)[0] / quad(vol_x2, _in, _out)[0]
 
         ne = N.sqrt(retn_sqd)
